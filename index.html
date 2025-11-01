@@ -100,7 +100,7 @@
         try {
             const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             const result = await response.json();
-            return result.candidates?.[0]?.content?.parts?.[0]?.text || "Analiz alınamadı, lütfen tekrar deneyin.";
+            return result.candidates && result.candidates[0] && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts[0] && result.candidates[0].content.parts[0].text || "Analiz alınamadı, lütfen tekrar deneyin.";
         } catch (error) {
             console.error("Analiz API Hatası:", error);
             return "API'ye erişim sırasında hata oluştu. Lütfen bağlantınızı kontrol edin.";
@@ -114,7 +114,7 @@
         try {
             const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
             const result = await response.json();
-            const rawNickname = result.candidates?.[0]?.content?.parts?.[0]?.text || "YapayZekaKoç";
+            const rawNickname = result.candidates && result.candidates[0] && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts[0] && result.candidates[0].content.parts[0].text || "YapayZekaKoç";
             return rawNickname.trim().replace(/['".,]/g, '').substring(0, 15);
         } catch (error) {
             console.error("Nickname API Hatası:", error);
@@ -127,9 +127,10 @@
         const apiKey = ""; const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
         const payload = { contents: [{ parts: [{ text: userQuery }] }], systemInstruction: { parts: [{ text: "Kısa ve eğitici bilgi özetleri sağla." }] }, generationConfig: { temperature: 0.5 } };
         try {
-            const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: 
+            JSON.stringify(payload) });
             const result = await response.json();
-            return result.candidates?.[0]?.content?.parts?.[0]?.text || "Açıklama alınamadı.";
+            return result.candidates && result.candidates[0] && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts[0] && result.candidates[0].content.parts[0].text || "Açıklama alınamadı.";
         } catch (error) {
             console.error("Açıklama API Hatası:", error);
             return "Açıklama yüklenirken bir hata oluştu.";
@@ -160,10 +161,11 @@
         };
         
         const isHost = useMemo(() => { return roomData && roomData.hostId === userId; }, [roomData, userId]);
-        const getNickname = useCallback((id) => { return (roomData?.players?.[id]?.nickname || `Oyuncu ${id.substring(0, 4)}`); }, [roomData]);
-        const getPlayerAvatar = useCallback((id) => { return getAvatarUrl(roomData?.players?.[id]?.avatar || AVATAR_LIST[0]); }, [roomData]);
+        const getNickname = useCallback((id) => { return (roomData && roomData.players && roomData.players[id] && roomData.players[id].nickname || `Oyuncu ${id.substring(0, 4)}`); }, [roomData]);
+        const getPlayerAvatar = useCallback((id) => { return getAvatarUrl(roomData && roomData.players && roomData.players[id] && roomData.players[id].avatar || AVATAR_LIST[0]); }, [roomData]);
         const getCategoryIcon = useCallback((key) => { return CATEGORIES.find(c => c.key === key) ? CATEGORIES.find(c => c.key === key).icon : List; }, []);
         
+        // --- HOOKS ---
         useEffect(() => {
             if (Object.keys(firebaseConfig).length === 0) { setError("Firebase yapılandırması eksik."); setIsAuthReady(true); return; }
             try {
@@ -182,6 +184,7 @@
         useEffect(() => { if (!db || !userId) return; const historyCollRef = collection(db, `artifacts/${appId}/users/${userId}/solo_history`); const q = query(historyCollRef); const unsubscribe = onSnapshot(q, (snapshot) => { const historyData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })); historyData.sort((a, b) => b.score - a.score); setSoloHistory(historyData); }, (e) => { console.error("Tek kişilik skor geçmişi alınamadı:", e); }); return () => unsubscribe(); }, [db, userId]);
         useEffect(() => { if (!db || !roomId || !isHost || roomData?.status !== 'playing' || !roomData?.questionStartTime) return; const allAnswered = roomData.players && Object.values(roomData.players).every(p => p.latestAnswerTime !== null); const timeElapsed = (new Date().getTime() - roomData.questionStartTime) / 1000; if (allAnswered || timeElapsed >= ANSWER_WINDOW_SECONDS) { const timeout = setTimeout(() => { handleNextQuestionOnline(); }, 1000); return () => clearTimeout(timeout); } }, [db, roomId, isHost, roomData]);
 
+        // --- ONLINE İŞLEVLERİ ---
         const handleCreateRoom = async (questionCount, category) => {
             if (!db || !userId || localNickname.trim() === '' || !selectedAvatar) return; setLoading(true); setError(null);
             try { 
@@ -204,22 +207,127 @@
             } catch (e) { setError("Odaya katılırken bir hata oluştu. Lütfen tekrar deneyin."); } finally { setLoading(false); }
         };
         
-        const handleStartGame = async () => { /* ... (Online Oyunu Başlatma) ... */ };
-        const handleAnswerQuestionOnline = async (selectedIndex) => { /* ... (Online Cevaplama) ... */ };
-        const handleNextQuestionOnline = async () => { /* ... (Online Sonraki Soru) ... */ };
+        const handleStartGame = async () => {
+            if (!isHost || !roomId || !db || !roomData?.questionCount || !roomData?.category) return; setLoading(true); setError(null);
+            const excludedThemes = soloHistory.reduce((acc, game) => { if (game.category === roomData.category && game.quizHistory) { try { const history = JSON.parse(game.quizHistory); history.forEach(q => acc.add(q.question)); } catch (e) { } } return acc; }, new Set());
+            try {
+                const quiz = await generateQuizData(roomData.questionCount, roomData.category, Array.from(excludedThemes).slice(0, 50)); 
+                if (quiz.length === 0) throw new Error("Soru üretilemedi.");
+                const roomRef = doc(db, `artifacts/${appId}/public/data/rooms`, roomId);
+                await updateDoc(roomRef, { status: 'playing', quizData: quiz, currentQuestionIndex: 0, questionStartTime: new Date().getTime() });
+            } catch (e) { setError(e.message || "Oyun başlatılamadı veya sorular üretilemedi."); } finally { setLoading(false); }
+        };
 
-        // --- Tek Kişilik İşlevleri ---
-        const saveSoloGameResult = async (finalScore, count, category, nick, avatarUrl, quizHistory) => { /* ... (Skor Kaydetme) ... */ };
-        const handleStartSinglePlayer = async () => { /* ... (Tek Kişilik Başlatma) ... */ };
-        const handleAnswerSinglePlayer = (selectedIndex) => { /* ... (Tek Kişilik Cevaplama) ... */ };
-        const handleNextSinglePlayer = async () => { /* ... (Tek Kişilik Sonraki Soru) ... */ };
-        const handleAnalyzePerformance = async () => { /* ... (Performans Analizi) ... */ };
-        const handleNicknameSuggestion = async () => { /* ... (Takma Ad Önerisi) ... */ };
-        const RenderMenu = () => { /* ... (Menu Kodu) ... */ return <div className="max-w-md mx-auto p-8 bg-white rounded-3xl shadow-2xl mt-16 text-center">...</div>; };
-        const RenderOnlineLobby = () => { /* ... (Online Lobi Kodu) ... */ return <div className="max-w-4xl mx-auto p-8 bg-white rounded-3xl shadow-2xl mt-10">...</div>; };
-        const RenderOnlineGame = () => { /* ... (Online Oyun Ekranları Kodu) ... */ return <div className="max-w-4xl mx-auto p-6">...</div>; };
-        const RenderSinglePlayerGame = () => { /* ... (Tek Kişilik Ekranlar Kodu) ... */ return <div className="max-w-lg mx-auto p-8 bg-white rounded-3xl shadow-2xl mt-10">...</div>; };
+        const handleAnswerQuestionOnline = async (selectedIndex) => {
+            if (!db || !roomId || !roomData || roomData.status !== 'playing') return; const playerState = roomData.players[userId]; const currentQuestion = roomData.quizData[roomData.currentQuestionIndex];
+            if (playerState?.latestAnswerTime !== null) return;
+            const isCorrect = selectedIndex === currentQuestion.correctIndex; const answerTime = new Date().getTime(); const timeTaken = (answerTime - roomData.questionStartTime) / 1000;
+            let newScore = playerState.score; let newAnswerTime = answerTime;
+            if (isCorrect) { let bonus = Math.floor(MAX_SPEED_BONUS * (1 - Math.min(1, timeTaken / ANSWER_WINDOW_SECONDS))); newScore += BASE_POINTS + Math.max(0, bonus); }
+            const updatedPlayers = { ...roomData.players, [userId]: { ...playerState, score: newScore, latestAnswerTime: newAnswerTime, isCorrect: isCorrect, answeredIndex: selectedIndex, timeTaken: timeTaken } };
+            const roomRef = doc(db, `artifacts/${appId}/public/data/rooms`, roomId); await updateDoc(roomRef, { players: updatedPlayers });
+        };
+
+        const handleNextQuestionOnline = async () => {
+            if (!db || !roomId || !roomData || roomData.hostId !== userId) return;
+            const nextIndex = roomData.currentQuestionIndex + 1; const totalQuestions = roomData.quizData.length;
+            const roomRef = doc(db, `artifacts/${appId}/public/data/rooms`, roomId);
+            const updatedPlayers = Object.fromEntries(Object.entries(roomData.players).map(([id, player]) => {
+                const newPlayerState = player.latestAnswerTime === null ? { ...player, latestAnswerTime: new Date().getTime(), isCorrect: false, answeredIndex: -1, timeTaken: ANSWER_WINDOW_SECONDS } : player;
+                return [id, newPlayerState];
+            }));
+
+            if (nextIndex < totalQuestions) {
+                const resetPlayers = Object.fromEntries(Object.entries(updatedPlayers).map(([id, player]) => [id, { ...player, latestAnswerTime: null, isCorrect: null, answeredIndex: null, timeTaken: null }]));
+                await updateDoc(roomRef, { currentQuestionIndex: nextIndex, questionStartTime: new Date().getTime(), players: resetPlayers });
+            } else {
+                await updateDoc(roomRef, { status: 'finished', players: updatedPlayers });
+            }
+        };
+        // --- TEK KİŞİLİK İŞLEVLERİ ---
+        const saveSoloGameResult = async (finalScore, count, category, nick, avatarUrl, quizHistory) => { /* ... */ };
+        const handleStartSinglePlayer = async () => { /* ... */ };
+        const handleAnswerSinglePlayer = (selectedIndex) => { /* ... */ };
+        const handleNextSinglePlayer = async () => { /* ... */ };
+        const handleAnalyzePerformance = async () => { /* ... */ };
+        const handleNicknameSuggestion = async () => { /* ... */ };
+        const CategorySelector = ({ selectedCategory, onSelectCategory }) => { /* ... */ };
+        const QuestionCountSelector = ({ selectedCount, onSelectCount }) => { /* ... */ };
+        const PlayerList = ({ players, userId, hostId, showAnswers = false, isOnlineGame = false }) => { /* ... */ };
         
+        // --- Tüm Render Fonksiyonları (RenderMenu, RenderOnlineLobby, RenderOnlineGame, RenderSinglePlayerGame) ---
+
+        const RenderMenu = () => (
+            <div className="max-w-md mx-auto p-8 bg-white rounded-3xl shadow-2xl mt-16 text-center">
+                <h1 className="text-4xl font-extrabold text-indigo-600 mb-6">{APP_NAME}</h1><p className="text-gray-600 mb-8">Nasıl oynamak istersiniz?</p>{error && <ErrorDisplay message={error} />}
+                <div className="space-y-6">
+                    <div className="mb-6"><h3 className="text-lg font-semibold text-gray-700 mb-3 flex items-center justify-center">Avatarını Seç</h3><div className="flex flex-wrap justify-center gap-2">
+                            {AVATAR_LIST.map((avatarSeed, index) => (<img key={index} src={getAvatarUrl(avatarSeed)} alt={`avatar-${index}`} className={`w-12 h-12 rounded-full cursor-pointer border-2 transition-all ${selectedAvatar === avatarSeed ? 'border-indigo-600 ring-2 ring-indigo-300' : 'border-gray-300 hover:border-indigo-400'}`} onClick={() => setSelectedAvatar(avatarSeed)} onError={(e) => e.target.src = getAvatarUrl(AVATAR_LIST[0])}/>))}
+                        </div></div>
+                    <div className="relative"><input type="text" placeholder="Takma Adınız (Nick)" value={localNickname} onChange={(e) => setLocalNickname(e.target.value)} className="w-full px-4 py-3 pr-14 border border-gray-300 rounded-xl focus:ring-indigo-500 focus:border-indigo-500 transition duration-150" maxLength={15} />
+                        <button onClick={handleNicknameSuggestion} disabled={loading} className="absolute right-0 top-0 h-full px-3 text-indigo-600 hover:text-indigo-800 disabled:opacity-50" title="AI'dan Takma Ad Önerisi Al">{loading ? <Loader className="w-5 h-5 animate-spin"/> : 'AI'}</button>
+                    </div>
+                    <button onClick={() => setGameMode('singlePlayer')} disabled={localNickname.trim() === '' || !selectedAvatar} className="w-full flex items-center justify-center px-6 py-3 border border-transparent text-lg font-medium rounded-xl shadow-lg text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 transition duration-150 transform hover:scale-[1.01]"><User className="w-5 h-5 mr-2" />Tek Kişilik Oyna</button>
+                    <button onClick={() => setGameMode('onlineLobby')} disabled={localNickname.trim() === '' || !selectedAvatar} className="w-full flex items-center justify-center px-6 py-3 border border-transparent text-lg font-medium rounded-xl shadow-lg text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 transition duration-150 transform hover:scale-[1.01]"><Users className="w-5 h-5 mr-2" />Online Oyna</button>
+                </div>
+            </div>
+        );
+
+        const RenderOnlineLobby = () => {
+            const [questionCount, setQuestionCount] = useState(10);
+            const [selectedCategory, setSelectedCategory] = useState('General');
+            const formatTimestamp = (ts) => { if (!ts || !ts.seconds) return 'Bilinmiyor'; const date = new Date(ts.seconds * 1000); return date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }); };
+
+            return (
+                <div className="max-w-4xl mx-auto p-8 bg-white rounded-3xl shadow-2xl mt-10">
+                    <button onClick={handleGoToMenu} className="flex items-center text-sm text-indigo-600 hover:underline mb-4"><Home className="w-4 h-4 mr-1"/>Ana Menü</button>
+                    <h2 className="text-3xl font-bold text-indigo-600 mb-6 text-center">Genel Lobi</h2>{error && <ErrorDisplay message={error} />}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div className="lg:col-span-1 p-4 border border-gray-200 rounded-xl shadow-md">
+                            <h3 className="text-xl font-semibold text-center mb-4">Yeni Oda Kur</h3>
+                            <CategorySelector selectedCategory={selectedCategory} onSelectCategory={setSelectedCategory} />
+                            <QuestionCountSelector selectedCount={questionCount} onSelectCount={setQuestionCount} />
+                            <button onClick={() => handleCreateRoom(questionCount, selectedCategory)} disabled={loading} className="w-full mt-4 flex items-center justify-center px-6 py-3 text-base font-medium rounded-xl shadow-sm text-white bg-green-600 hover:bg-green-700 disabled:opacity-50">
+                                {loading ? <Loader className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5 mr-2" />}Oda Kur ve Başlat</button>
+                        </div>
+
+                        <div className="lg:col-span-2 p-4 border border-gray-200 rounded-xl shadow-md">
+                            <h3 className="text-xl font-semibold text-center mb-4">Açık Odalar ({activeRooms.length})</h3>
+                            <div className="space-y-3 max-h-96 overflow-y-auto">
+                                {activeRooms.length === 0 ? (<p className="text-center text-gray-500 p-4">Şu anda açık oda bulunmamaktadır. Hemen bir oda kur!</p>) : (
+                                    activeRooms.map(room => {
+                                        const hostNickname = room.players[room.hostId]?.nickname || "Bilinmeyen Host";
+                                        const CategoryIcon = getCategoryIcon(CATEGORIES.find(c => c.label === room.category)?.key || 'General');
+                                        return (<div key={room.id} className="flex items-center justify-between p-3 bg-indigo-50 rounded-lg border border-indigo-200 shadow-sm">
+                                            <div className="flex items-center space-x-3"><img src={getAvatarUrl(room.players[room.hostId]?.avatar)} alt="host avatar" className="w-8 h-8 rounded-full border-2 border-indigo-400" />
+                                                <div className="text-left"><p className="font-bold text-gray-800">{hostNickname}</p><p className="text-sm text-gray-600 flex items-center">
+                                                        <CategoryIcon className="w-4 h-4 mr-1"/> {room.category} ({room.questionCount} Soru)
+                                                    </p></div></div>
+                                            <button onClick={() => handleJoinRoomByClick(room.id)} disabled={loading || room.hostId === userId} className="px-4 py-2 text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400">
+                                                {room.hostId === userId ? "Odam (Bekleniyor)" : `Katıl (${Object.keys(room.players).length})`}
+                                            </button></div>);
+                                    })
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+        
+        const RenderOnlineGame = () => { /* ... (Online Oyun Kodu) ... */ return (
+            <div className="max-w-4xl mx-auto p-6">
+                {/* Oynanıyor Ekranı */}
+            </div>
+        ); };
+
+        const RenderSinglePlayerGame = () => { /* ... (Tek Kişilik Oyun Kodu) ... */ return (
+             <div className="max-w-lg mx-auto p-8 bg-white rounded-3xl shadow-2xl mt-10">
+                 {/* Kurulum/Oynanıyor/Sonuç Ekranları */}
+             </div>
+         ); };
+
+
         // --- ANA RENDER ---
         
         return (
