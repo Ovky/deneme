@@ -22,18 +22,18 @@
 
 <div id="root"></div>
 
-<script type="text/babel">
-    window.__firebase_config = JSON.stringify({
-        apiKey: "AIzaSyCIguwhWSomYktTSv_qlt0wYzakte35FhY", 
-        authDomain: "ovkyoyun.firebaseapp.com",
-        projectId: "ovkyoyun", 
-        storageBucket: "ovkyoyun.firebasestorage.app",
-        messagingSenderId: "283924737233", 
-        appId: "1:283924737233:web:d4c2d2d4d3f81d4cc6e9f0" 
-    });
-    window.__app_id = JSON.parse(window.__firebase_config).projectId; 
-    window.__initial_auth_token = null; 
+window.__firebase_config = JSON.stringify({
+    "apiKey": "AIzaSyCIguwhWSomYktTSv_qlt0wYzakte35FhY", 
+    "authDomain": "ovkyoyun.firebaseapp.com",
+    "projectId": "ovkyoyun", 
+    "storageBucket": "ovkyoyun.firebasestorage.app",
+    "messagingSenderId": "283924737233", 
+    "appId": "1:283924737233:web:d4c2d2d4d3f81d4cc6e9f0" 
+});
 
+window.__app_id = JSON.parse(window.__firebase_config).projectId; 
+window.__initial_auth_token = null;
+    
     const { useState, useEffect, useCallback, useMemo } = React;
     const { initializeApp } = firebase;
     const { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } = firebase.auth;
@@ -354,3 +354,4 @@
 
 </body>
 </html>
+
